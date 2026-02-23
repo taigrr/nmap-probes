@@ -1,0 +1,131 @@
+name: Update nmap databases
+
+on:
+  schedule:
+    # Weekly on Mondays at 06:00 UTC
+    - cron: "0 6 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout nmap-probes
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Clone nmap (shallow)
+        run: git clone --depth=1 https://github.com/nmap/nmap /tmp/nmap-ref
+
+      - name: Compute checksums of nmap data files
+        id: checksums
+        run: |
+          sha256sum /tmp/nmap-ref/nmap-service-probes /tmp/nmap-ref/nmap-mac-prefixes > /tmp/nmap-checksums.txt
+          cat /tmp/nmap-checksums.txt
+          echo "new_hash=$(sha256sum /tmp/nmap-checksums.txt | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Check for cached checksums
+        id: cache
+        run: |
+          if [ -f .nmap-checksums ]; then
+            echo "old_hash=$(cat .nmap-checksums)" >> "$GITHUB_OUTPUT"
+          else
+            echo "old_hash=none" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compare checksums
+        id: compare
+        run: |
+          if [ "${{ steps.checksums.outputs.new_hash }}" = "${{ steps.cache.outputs.old_hash }}" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No changes detected in nmap data files."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Changes detected — regenerating databases."
+          fi
+
+      - name: Regenerate databases
+        if: steps.compare.outputs.changed == 'true'
+        run: |
+          go run ./cmd/generate-probes/ \
+            -input /tmp/nmap-ref/nmap-service-probes \
+            -o probes_generated.go
+
+          go run ./cmd/generate-mac/ \
+            -input /tmp/nmap-ref/nmap-mac-prefixes \
+            -o mac_generated.go
+
+      - name: Run tests
+        if: steps.compare.outputs.changed == 'true'
+        run: go test -race ./...
+
+      - name: Save checksums
+        if: steps.compare.outputs.changed == 'true'
+        run: echo "${{ steps.checksums.outputs.new_hash }}" > .nmap-checksums
+
+      - name: Get nmap commit info
+        if: steps.compare.outputs.changed == 'true'
+        id: nmap-info
+        run: |
+          cd /tmp/nmap-ref
+          echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(git log -1 --format=%cs)" >> "$GITHUB_OUTPUT"
+
+      - name: Determine next version
+        if: steps.compare.outputs.changed == 'true'
+        id: version
+        run: |
+          # Get latest tag
+          latest=$(git tag --sort=-v:refname | head -1)
+          if [ -z "$latest" ]; then
+            echo "next=v0.2.0" >> "$GITHUB_OUTPUT"
+          else
+            # Bump minor version
+            major=$(echo "$latest" | sed 's/v//' | cut -d. -f1)
+            minor=$(echo "$latest" | sed 's/v//' | cut -d. -f2)
+            patch=$(echo "$latest" | sed 's/v//' | cut -d. -f3)
+            next_minor=$((minor + 1))
+            echo "next=v${major}.${next_minor}.0" >> "$GITHUB_OUTPUT"
+          fi
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+
+      - name: Create PR
+        if: steps.compare.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          branch="auto/update-nmap-${{ steps.nmap-info.outputs.sha }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add -A
+          git commit -m "chore: update nmap databases (nmap@${{ steps.nmap-info.outputs.sha }})
+
+          Source: nmap/nmap@${{ steps.nmap-info.outputs.sha }} (${{ steps.nmap-info.outputs.date }})
+          Release: ${{ steps.version.outputs.next }}"
+
+          git push origin "$branch"
+
+          gh pr create \
+            --title "chore: update nmap databases (nmap@${{ steps.nmap-info.outputs.sha }})" \
+            --body "Automated update of nmap data files.
+
+          **Source:** nmap/nmap@${{ steps.nmap-info.outputs.sha }} (${{ steps.nmap-info.outputs.date }})
+          **Proposed version:** ${{ steps.version.outputs.next }}
+
+          ### Changes
+          - Regenerated \`probes_generated.go\` from \`nmap-service-probes\`
+          - Regenerated \`mac_generated.go\` from \`nmap-mac-prefixes\`
+          - All tests pass
+
+          ---
+          *Auto-merge enabled. Will tag ${{ steps.version.outputs.next }} on merge.*" \
+            --label "automated"

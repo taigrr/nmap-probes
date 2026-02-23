@@ -1,0 +1,46 @@
+name: Auto-tag on merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'auto/update-nmap-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from PR body
+        id: version
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          version=$(echo "$BODY" | grep -oP 'Proposed version:\*\* \K(v[\d.]+)')
+          if [ -z "$version" ]; then
+            # Fallback: bump latest tag
+            latest=$(git tag --sort=-v:refname | head -1)
+            if [ -z "$latest" ]; then
+              version="v0.2.0"
+            else
+              major=$(echo "$latest" | sed 's/v//' | cut -d. -f1)
+              minor=$(echo "$latest" | sed 's/v//' | cut -d. -f2)
+              version="v${major}.$((minor + 1)).0"
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Tagging $version"
+
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.version.outputs.version }}"
+          git push origin "${{ steps.version.outputs.version }}"
