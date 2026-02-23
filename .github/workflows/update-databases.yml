@@ -28,7 +28,7 @@ jobs:
       - name: Compute checksums of nmap data files
         id: checksums
         run: |
-          sha256sum /tmp/nmap-ref/nmap-service-probes /tmp/nmap-ref/nmap-mac-prefixes > /tmp/nmap-checksums.txt
+          sha256sum /tmp/nmap-ref/nmap-service-probes /tmp/nmap-ref/nmap-mac-prefixes /tmp/nmap-ref/nmap-os-db > /tmp/nmap-checksums.txt
           cat /tmp/nmap-checksums.txt
           echo "new_hash=$(sha256sum /tmp/nmap-checksums.txt | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
@@ -62,6 +62,10 @@ jobs:
           go run ./cmd/generate-mac/ \
             -input /tmp/nmap-ref/nmap-mac-prefixes \
             -o mac_generated.go
+
+          go run ./cmd/generate-osdb/ \
+            -input /tmp/nmap-ref/nmap-os-db \
+            -o osdb_generated.go
 
       - name: Run tests
         if: steps.compare.outputs.changed == 'true'
@@ -124,6 +128,7 @@ jobs:
           ### Changes
           - Regenerated \`probes_generated.go\` from \`nmap-service-probes\`
           - Regenerated \`mac_generated.go\` from \`nmap-mac-prefixes\`
+          - Regenerated \`osdb_generated.go\` from \`nmap-os-db\`
           - All tests pass
 
           ---

@@ -49,6 +49,21 @@ func TestLookupMAC(t *testing.T) {
 	}
 }
 
+func TestOSFingerprints(t *testing.T) {
+	data := OSFingerprints()
+	if len(data) == 0 {
+		t.Fatal("OSFingerprints returned empty data")
+	}
+	s := string(data)
+	if !strings.Contains(s, "Fingerprint ") {
+		t.Error("expected 'Fingerprint ' lines in OS DB data")
+	}
+	if !strings.Contains(s, "Class ") {
+		t.Error("expected 'Class ' lines in OS DB data")
+	}
+	t.Logf("OSFingerprints: %d bytes", len(data))
+}
+
 func TestLookupMACHW(t *testing.T) {
 	hw := []byte{0x00, 0x00, 0x00, 0x12, 0x34, 0x56}
 	v := LookupMACHW(hw)

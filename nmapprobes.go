@@ -32,3 +32,10 @@ func LookupMAC(mac string) string {
 func LookupMACHW(hw net.HardwareAddr) string {
 	return lookupMACHW(hw)
 }
+
+// OSFingerprints returns the embedded nmap-os-db data.
+// The returned bytes are in nmap-os-db format and can be parsed
+// by any compatible parser.
+func OSFingerprints() []byte {
+	return []byte(embeddedOSDB)
+}

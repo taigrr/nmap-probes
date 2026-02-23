@@ -38,4 +38,5 @@ git clone --depth=1 https://github.com/nmap/nmap /tmp/nmap-ref
 
 go run ./cmd/generate-probes/ -input /tmp/nmap-ref/nmap-service-probes -o probes_generated.go
 go run ./cmd/generate-mac/ -input /tmp/nmap-ref/nmap-mac-prefixes -o mac_generated.go
+go run ./cmd/generate-osdb/ -input /tmp/nmap-ref/nmap-os-db -o osdb_generated.go
 ```
