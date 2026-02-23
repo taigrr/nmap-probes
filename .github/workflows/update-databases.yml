@@ -114,7 +114,7 @@ jobs:
 
           git push origin "$branch"
 
-          gh pr create \
+          pr_url=$(gh pr create \
             --title "chore: update nmap databases (nmap@${{ steps.nmap-info.outputs.sha }})" \
             --body "Automated update of nmap data files.
 
@@ -128,4 +128,6 @@ jobs:
 
           ---
           *Auto-merge enabled. Will tag ${{ steps.version.outputs.next }} on merge.*" \
-            --label "automated"
+            --label "automated")
+
+          gh pr merge "$pr_url" --auto --squash
